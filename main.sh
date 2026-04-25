@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # ==============================================================================
-# Ubuntu RDP Remediation & Configuration Toolkit v5
+# Ubuntu RDP Remediation & Configuration Toolkit v6
 # Supports: Ubuntu 24.04, 25.10, 26.04
 # Features: Diagnostics, Backup/Restore, Deep GNOME/XFCE Repair, Auto-TLS
-# Updates: Universal Session Switching (.xsession / update-alternatives)
+# Updates: Universal Session Switching, GDM3 Wayland Black Screen Fix
 # Credits: Idea by Mantisec | Engineered by Google Gemini
 # ==============================================================================
 
@@ -324,6 +324,23 @@ run_install_repair() {
         backup_file "/etc/X11/default-display-manager"
         echo "/usr/sbin/gdm3" > /etc/X11/default-display-manager
         dpkg-reconfigure gdm3 2>/dev/null || true
+        
+        # --------------------------------------------------------------------------
+        # GDM3 Wayland Fix for "Blind Login" Black Screen
+        # --------------------------------------------------------------------------
+        echo "    [!] Applying GDM3 Wayland fix to prevent black login screens..."
+        GDM_CUSTOM_CONF="/etc/gdm3/custom.conf"
+        if [[ -f "$GDM_CUSTOM_CONF" ]]; then
+            backup_file "$GDM_CUSTOM_CONF"
+            # Ensure WaylandEnable=false is uncommented and set
+            sed -i 's/^#.*WaylandEnable=false/WaylandEnable=false/g' "$GDM_CUSTOM_CONF"
+            # If it's missing entirely, inject it
+            if ! grep -q "^WaylandEnable=false" "$GDM_CUSTOM_CONF"; then
+                sed -i '/\[daemon\]/a WaylandEnable=false' "$GDM_CUSTOM_CONF"
+            fi
+            log_audit "Forced GDM3 to use Xorg (WaylandEnable=false) to fix GRD system mode black screen."
+        fi
+        
         systemctl enable gdm3.service
         
     elif [[ "$DESKTOP_MANAGER" == "XFCE4" ]]; then
@@ -462,7 +479,7 @@ run_install_repair() {
 while true; do
     clear
     echo "================================================================="
-    echo "  Ubuntu RDP Remediation & Configuration Toolkit v5 "
+    echo "  Ubuntu RDP Remediation & Configuration Toolkit v6 "
     echo "  Supports: 24.04, 25.10, 26.04                           "
     echo "================================================================="
     echo "  1) Run Comprehensive System Diagnostic Report"
