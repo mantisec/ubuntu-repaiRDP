@@ -1,9 +1,10 @@
 #!/bin/bash
 
 # ==============================================================================
-# Ubuntu RDP Remediation & Configuration Toolkit v4
+# Ubuntu RDP Remediation & Configuration Toolkit v5
 # Supports: Ubuntu 24.04, 25.10, 26.04
 # Features: Diagnostics, Backup/Restore, Deep GNOME/XFCE Repair, Auto-TLS
+# Updates: Universal Session Switching (.xsession / update-alternatives)
 # Credits: Idea by Mantisec | Engineered by Google Gemini
 # ==============================================================================
 
@@ -265,7 +266,7 @@ run_install_repair() {
     fi
 
     # Cleanup Conflicting Services
-    echo "\n[*] Cleaning up conflicting RDP configurations..."
+    echo -e "\n[*] Cleaning up conflicting RDP configurations..."
     if [[ "$RDP_SERVICE" == "gnome-remote-desktop" ]]; then
         systemctl stop xrdp 2>/dev/null || true
         backup_file "/etc/xrdp/xrdp.ini"
@@ -285,7 +286,7 @@ run_install_repair() {
 
     # Extensive Repair
     if [[ "$REPAIR" == "true" ]]; then
-        echo "\n[*] Initiating extensive system repair..."
+        echo -e "\n[*] Initiating extensive system repair..."
         dpkg --configure -a
         apt-get update
         apt-get install -f -y
@@ -294,7 +295,7 @@ run_install_repair() {
     fi
 
     # DE Installation
-    echo "\n[*] Setting up Desktop Environment: $DESKTOP_MANAGER"
+    echo -e "\n[*] Setting up Desktop Environment: $DESKTOP_MANAGER"
     apt-get update
 
     if [[ "$DESKTOP_MANAGER" == "Gnome" ]]; then
@@ -338,8 +339,34 @@ run_install_repair() {
         fi
     fi
 
+    # --------------------------------------------------------------------------
+    # Universal Session Switching (.xsession & update-alternatives)
+    # --------------------------------------------------------------------------
+    echo -e "\n[*] Configuring User Session Files for $DESKTOP_MANAGER..."
+    USER_HOME=$(eval echo "~$USERNAME")
+    backup_file "$USER_HOME/.xsession"
+    backup_file "$USER_HOME/.Xclients"
+
+    if [[ "$DESKTOP_MANAGER" == "Gnome" ]]; then
+        echo "gnome-session" > "$USER_HOME/.xsession"
+        echo "gnome-session" > "$USER_HOME/.Xclients"
+        if command -v update-alternatives &>/dev/null; then
+            update-alternatives --set x-session-manager /usr/bin/gnome-session 2>/dev/null || true
+        fi
+    elif [[ "$DESKTOP_MANAGER" == "XFCE4" ]]; then
+        echo "xfce4-session" > "$USER_HOME/.xsession"
+        echo "xfce4-session" > "$USER_HOME/.Xclients"
+        if command -v update-alternatives &>/dev/null; then
+            update-alternatives --set x-session-manager /usr/bin/xfce4-session 2>/dev/null || true
+        fi
+    fi
+    
+    chown "$USERNAME:$USERNAME" "$USER_HOME/.xsession" "$USER_HOME/.Xclients" 2>/dev/null || true
+    chmod +x "$USER_HOME/.xsession" "$USER_HOME/.Xclients" 2>/dev/null || true
+    log_audit "Updated .xsession, .Xclients, and x-session-manager for $DESKTOP_MANAGER."
+
     # TLS Setup
-    echo "\n[*] Preparing TLS Certificates for RDP..."
+    echo -e "\n[*] Preparing TLS Certificates for RDP..."
     apt-get install -y ssl-cert openssl
     TLS_CERT="/etc/ssl/certs/rdp-custom-cert.pem"
     TLS_KEY="/etc/ssl/private/rdp-custom-key.pem"
@@ -356,7 +383,7 @@ run_install_repair() {
     chmod 644 "$TLS_CERT"
 
     # RDP Service Setup
-    echo "\n[*] Configuring RDP Service: $RDP_SERVICE"
+    echo -e "\n[*] Configuring RDP Service: $RDP_SERVICE"
     if [[ "$RDP_SERVICE" == "gnome-remote-desktop" ]]; then
         apt-get install -y gnome-remote-desktop
         usermod -aG ssl-cert gnome-remote-desktop 2>/dev/null || true
@@ -390,15 +417,6 @@ run_install_repair() {
         sed -i "s|^certificate=.*|certificate=$TLS_CERT|g" /etc/xrdp/xrdp.ini
         sed -i "s|^key_file=.*|key_file=$TLS_KEY|g" /etc/xrdp/xrdp.ini
 
-        USER_HOME=$(eval echo "~$USERNAME")
-        backup_file "$USER_HOME/.xsession"
-        if [[ "$DESKTOP_MANAGER" == "XFCE4" ]]; then
-            echo "xfce4-session" > "$USER_HOME/.xsession"
-        elif [[ "$DESKTOP_MANAGER" == "Gnome" ]]; then
-            echo "gnome-session" > "$USER_HOME/.xsession"
-        fi
-        chown "$USERNAME:$USERNAME" "$USER_HOME/.xsession"
-
         XRDP_STARTWM="/etc/xrdp/startwm.sh"
         backup_file "$XRDP_STARTWM"
         if ! grep -q "export GNOME_SHELL_SESSION_MODE=ubuntu" "$XRDP_STARTWM"; then
@@ -407,7 +425,7 @@ run_install_repair() {
 
         systemctl enable xrdp
         systemctl restart xrdp
-        log_audit "Configured XRDP for $DESKTOP_MANAGER."
+        log_audit "Configured XRDP."
     fi
 
     # Firewall Setup
@@ -444,7 +462,7 @@ run_install_repair() {
 while true; do
     clear
     echo "================================================================="
-    echo "  Ubuntu RDP Remediation & Configuration Toolkit v4 "
+    echo "  Ubuntu RDP Remediation & Configuration Toolkit v5 "
     echo "  Supports: 24.04, 25.10, 26.04                           "
     echo "================================================================="
     echo "  1) Run Comprehensive System Diagnostic Report"
